@@ -1,0 +1,273 @@
+<기존 실습자료에 추가>
+
+// 윈도우즈에서 다음과 같이 작업
+C:/linux/share 에서 기존 res 삭제
+C:/linux/share에 현재 폴더의 res를 복사
+
+// 홈 디렉터리로 이동
+cd
+
+// 기존 ~/res에 덮어씀 -> 기존 내용은 유지되고 새로운 내용이 복사됨
+sudo cp -rf /media/sf_share/res .
+
+// 소유자와 소유그룹을 user로 변경
+sudo chown -R user res
+sudo chgrp -R user res
+
+<alsa-lib 설치>
+mkdir ~/work/alsa
+cd ~/work/alsa
+tar jxvf ~/res/alsa/alsa-lib-1.0.27.2.tar.bz2
+cd alsa-lib-1.0.27.2
+CC=arm-linux-gnueabihf-gcc ./configure --host=arm-linux --prefix=/home/user/work/alsa/install/
+make
+make install
+sudo cp -arf ~/work/alsa/install /nfsroot/alsa-lib
+
+sudo vim /nfsroot/alsa.sh
+==========================================================
+ALSA_CONFIG_PATH=/mnt/nfs/alsa-lib/share/alsa/alsa.conf
+export ALSA_CONFIG_PATH
+LD_LIBRARY_PATH=/mnt/nfs/alsa-lib/lib:/mnt/nfs/alsa-lib/lib/alsa-lib:/mnt/nfs/alsa-lib/lib/alsa-lib/smixer
+export LD_LIBRARY_PATH
+==========================================================
+
+<alsa-utils 설치>
+cd ~/work/alsa
+tar jxvf ~/res/alsa/alsa-utils-1.0.27.2.tar.bz2
+cd alsa-utils-1.0.27.2
+CC=arm-linux-gnueabihf-gcc ./configure --prefix=/home/user/work/alsa/install/ --host=arm-linux --with-alsa-inc-prefix=/home/user/work/alsa/install/include --with-alsa-prefix=/home/user/work/alsa/install/lib --disable-alsamixer --disable-xmlto --disable-nls
+make
+sudo cp aplay/aplay /nfsroot
+sudo cp amixer/amixer /nfsroot
+sudo cp -rf ~/res/test_contents /nfsroot
+
+## 타겟에서 실행
+cd /mnt/nfs
+source alsa.sh
+./aplay -l
+./amixer -c 0 sset 'Headphone',0 80% 80% on
+./aplay -Dhw:0,0 /mnt/nfs/test_contents/test.wav
+
+<libdrm 빌드>
+cd ~/work
+tar jxvf ~/res/libdrm/libdrm-2.4.89.tar.bz2
+cd libdrm-2.4.89
+./configure --prefix=/home/user/work/libdrm-2.4.89/install --enable-udev --host=arm-linux-gnueabihf
+make
+make install
+
+sudo cp -arf install /nfsroot/libdrm
+sudo cp -arf tests/modetest/.libs/modetest /nfsroot
+
+## 타겟에서 실행
+cd /mnt/nfs
+export LD_LIBRARY_PATH=/mnt/nfs/libdrm/lib
+./modetest -P 27@35:640x480+0+0@AR24
+
+<modeset 빌드>
+cd ~/work
+tar zxvf ~/res/drm-howto/drm-howto_yymmdd.tar.gz
+cd drm-howto
+make
+
+## 타겟에서 실행
+cd /mnt/nfs
+export LD_LIBRARY_PATH=/mnt/nfs/libdrm/lib
+./modeset
+
+<fbtest 빌드>
+cd ~/work
+tar zxvf ~/res/fbtest/fbtest_yymmdd.tar.gz
+cd fbtest
+make
+
+## 타겟에서 실행
+cd /mnt/nfs
+./fbtest
+
+<v4l2test 빌드>
+cd ~/work
+tar zxvf ~/res/v4l2test/v4l2test_yymmdd.tar.gz 
+cd v4l2test
+make
+
+## 타겟에서 실행
+cd /mnt/nfs
+./v4l2test -d /dev/video2 -c 700000 -b /dev/fb0
+
+<mplayer 빌드>
+cd ~/work
+tar zxvf ~/res/mplayer/MPlayer-1.1.tar.gz
+cd MPlayer-1.1
+./configure --cc=arm-linux-gnueabihf-gcc --target=arm-linux --enable-static --prefix=/home/user/work/MPlayer-1.1/install --disable-dvdread --enable-fbdev --disable-mencoder --disable-x11 --disable-sdl --disable-parser=dca --disable-decoder=dca
+Makefile 수정
+	$(HOST_CC) -> gcc
+make
+sudo cp mplayer /nfsroot
+
+## 타겟에서 실행
+cd /mnt/nfs
+./mplayer -vo fbdev2 -vf scale=1024:600 -volume 30 -srate 44100 test_contents/test.avi
+
+<터치 테스트>
+cd ~/work
+tar zxvf ~/res/inputtest/inputtest_yymmdd.tar.gz
+cd inputtest
+make
+
+## 타겟에서 실행
+./inputtest /dev/input/event0
+
+<tslib 빌드>
+cd ~/work
+tar jxvf ~/res/tslib/tslib-1.0.tar.bz2
+cd tslib-1.0/
+./autogen.sh
+./configure --prefix=/home/user/work/tslib-1.0/tslib_arm --host=arm-linux-gnueabihf
+vim config.h
+	수정: #define malloc rpl_malloc -> //#define malloc rpl_malloc
+vim etc/ts.conf
+	수정: # module_raw input -> module_raw input
+make
+make install
+sudo rm -rf /nfsroot/tslib_arm
+sudo cp -rf tslib_arm /nfsroot
+
+sudo vim /nfsroot/tslib.sh
+==========================================================
+export TSLIB_TSDEVICE=/dev/input/event0 
+export TSLIB_CALIBFILE=/mnt/nfs/tslib_arm/etc/pointercal 
+export TSLIB_CONFFILE=/mnt/nfs/tslib_arm/etc/ts.conf 
+export TSLIB_PLUGINDIR=/mnt/nfs/tslib_arm/lib/ts 
+export TSLIB_CONSOLEDEVICE=none 
+export TSLIB_FBDEVICE=/dev/fb0 
+export LD_LIBRARY_PATH=/mnt/nfs/tslib_arm/lib:$LD_LIBRARY_PATH
+==========================================================
+
+## 타겟에서 실행
+source /mnt/nfs/tslib.sh
+/mnt/nfs/tslib_arm/bin/ts_calibrate 
+/mnt/nfs/tslib_arm/bin/ts_test 
+
+<QT 설치 (처음 설치 시)>
+mkdir ~/work/qt
+cd ~/work/qt
+tar zxvf ~/res/qt/qt-everywhere-opensource-src-4.8.4.tar.gz
+cd qt-everywhere-opensource-src-4.8.4/
+
+vim mkspecs/qws/linux-arm-g++/qmake.conf
+================================================================
+# modifications to g++.conf
+QMAKE_CC                = arm-linux-gnueabihf-gcc
+QMAKE_CXX               = arm-linux-gnueabihf-g++
+QMAKE_LINK              = arm-linux-gnueabihf-g++
+QMAKE_LINK_SHLIB        = arm-linux-gnueabihf-g++
+
+# modifications to linux.conf
+QMAKE_AR                = arm-linux-gnueabihf-ar cqs
+QMAKE_OBJCOPY           = arm-linux-gnueabihf-objcopy
+QMAKE_STRIP             = arm-linux-gnueabihf-strip
+
+QMAKE_INCDIR = /home/user/work/tslib-1.0/tslib_arm/include
+QMAKE_LIBDIR = /home/user/work/tslib-1.0/tslib_arm/lib
+QMAKE_LFLAGS = -lts                         
+================================================================
+
+./configure -prefix /home/user/work/qt/qt-everywhere-opensource-src-4.8.4/install -xplatform qws/linux-arm-g++ -qt-kbd-linuxinput -qt-mouse-tslib -qt-gfx-linuxfb -embedded arm -little-endian -no-webkit -no-openssl -no-mmx -no-sse -no-sse2 -no-javascript-jit -no-neon -release -no-largefile -no-accessibility -no-qt3support -qt-zlib -qt-libpng -no-libmng -qt-libjpeg -no-libtiff -no-nis -no-cups -qt-freetype -depths 16,24,32
+
+...
+Type 'c' if you want to use the Commercial Edition.
+Type 'o' if you want to use the Open Source Edition.
+o
+
+Type '3' to view the GNU General Public License version 3.
+Type 'L' to view the Lesser GNU General Public License version 2.1.
+Type 'yes' to accept this license offer.
+Type 'no' to decline this license offer.
+Do you accept the terms of either license? yes
+...
+		
+make -j 4
+make install
+
+cd ~/work/qt/qt-everywhere-opensource-src-4.8.4/demos/shared
+cp libdemo_shared.a ~/work/qt/qt-everywhere-opensource-src-4.8.4/install/demos/shared
+
+cd /home/user/work/qt/qt-everywhere-opensource-src-4.8.4/install
+sudo mkdir /nfsroot/qt
+sudo cp -rf lib /nfsroot/qt
+sudo cp demos/affine/affine /nfsroot
+
+sudo vim /nfsroot/qt.sh
+========================================================
+export QTDIR=/mnt/nfs/qt
+export LD_LIBRARY_PATH=$QTDIR/lib:$LD_LIBRARY_PATH
+export QWS_MOUSE_PROTO="TSLIB:/dev/input/event0"
+export QWS_KEYBOARD=TTY:/dev/tty1
+export QT_QWS_FONTDIR=/mnt/nfs/qt/lib/fonts
+export POINTERCAL_FILE=/mnt/nfs/tslib_arm/etc/pointercal
+========================================================
+
+## 타겟에서 실행
+source /mnt/nfs/tslib.sh
+source /mnt/nfs/qt.sh
+/mnt/nfs/affine -qws
+
+<QT 설치 (미리 빌드된 버전 사용 시)>
+mkdir ~/work/qt
+cd ~/work/qt
+tar zxvf ~/res/qt/qt-everywhere-opensource-src-4.8.4_prebuilt_yymmdd.tar.gz
+
+cd /home/user/work/qt/qt-everywhere-opensource-src-4.8.4/install
+sudo mkdir /nfsroot/qt
+sudo cp -rf lib /nfsroot/qt
+sudo cp demos/affine/affine /nfsroot
+
+sudo vim /nfsroot/qt.sh
+========================================================
+export QTDIR=/mnt/nfs/qt
+export LD_LIBRARY_PATH=$QTDIR/lib:$LD_LIBRARY_PATH
+export QWS_MOUSE_PROTO="TSLIB:/dev/input/event0"
+export QWS_KEYBOARD=TTY:/dev/tty1
+export QT_QWS_FONTDIR=/mnt/nfs/qt/lib/fonts
+export POINTERCAL_FILE=/mnt/nfs/tslib_arm/etc/pointercal
+========================================================
+
+## 타겟에서 실행
+source /mnt/nfs/tslib.sh
+source /mnt/nfs/qt.sh
+/mnt/nfs/affine -qws
+
+<tcp 테스트>
+cd ~/work
+tar zxvf ~/res/tcptest/tcptest_yymmdd.tar.gz
+cd tcptest
+make
+
+## 타겟에서 실행
+cd /mnt/nfs
+./tcp_server_bd
+
+## PC에서 실행
+./tcp_client_pc hello
+./tcp_client_pc linux
+
+<udp 테스트>
+cd ~/work
+tar zxvf ~/res/udptest/udptest_yymmdd.tar.gz
+cd udptest
+makecd
+
+## 타겟에서 실행
+cd /mnt/nfs
+./udp_server_bd
+
+## PC에서 실행
+./udp_client_pc hello
+./udp_client_pc linux
+
+
+
+
+
